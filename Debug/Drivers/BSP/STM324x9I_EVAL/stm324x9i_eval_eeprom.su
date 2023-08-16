@@ -1,0 +1,6 @@
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:116:10:BSP_EEPROM_Init	8	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:404:13:BSP_EEPROM_TIMEOUT_UserCallback	0	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:150:10:BSP_EEPROM_ReadBuffer	8	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:389:10:BSP_EEPROM_WaitEepromStandbyState	8	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:197:10:BSP_EEPROM_WritePage	16	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_eeprom.c:232:10:BSP_EEPROM_WriteBuffer	40	static

@@ -18,12 +18,36 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "adc.h"
+#include "dma.h"
+#include "dma2d.h"
+#include "i2c.h"
+#include "ltdc.h"
+#include "sai.h"
+#include "usart.h"
+#include "gpio.h"
+#include "fmc.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm324x9i_eval.h"
+#include "stm324x9i_eval_lcd.h"
+#include "stm324x9i_eval_ts.h"
+
+#define ARM_MATH_CM4
+#define DMABuffLength 1024
+#define FFTBuffLenth (DMABuffLength * 2)
 #include "WM8994.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include "arm_math.h"
+#include "MedianFilter.h"
+
+#define NUM_ELEMENTS    25		// 11 works fine
+static sMedianFilter_t medianFilter;
+static sMedianNode_t medianBuffer[NUM_ELEMENTS];
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,41 +65,191 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
- I2C_HandleTypeDef hi2c1;
-
-SAI_HandleTypeDef hsai_BlockA1;
-SAI_HandleTypeDef hsai_BlockB1;
-DMA_HandleTypeDef hdma_sai1_a;
-DMA_HandleTypeDef hdma_sai1_b;
 
 /* USER CODE BEGIN PV */
+
+int medianValue = 0;
+
+q31_t fft_buff[DMABuffLength / 2];
+q31_t DMABuffin_ch1[DMABuffLength/2];
+q31_t mag_fft_buff[DMABuffLength/2];
+
+arm_rfft_instance_q31 realFFT_Instance;
+arm_rfft_instance_q31 realIFFT_Instance;
+
+int16_t DMABuffin   [DMABuffLength];
+int16_t DMABuffout  [DMABuffLength];
+
+int16_t wave4p[] = {0,0,245,0,490,0,733,0,975,0,1214,0,1451,0,1684,0,1913,0,2137,0,2356,0,2570,0,2777,0,2978,0,3171,0,3357,0,3535,0,3704,0,3865,0,4016,0,4157,0,4288,0,4409,0,4519,0,4619,0,4707,0,4784,0,4850,0,4903,0,4945,0,4975,0,4993,0,5000,0,4993,0,4975,0,4945,0,4903,0,4850,0,4784,0,4707,0,4619,0,4519,0,4409,0,4288,0,4157,0,4016,0,3865,0,3704,0,3535,0,3357,0,3171,0,2978,0,2777,0,2570,0,2356,0,2137,0,1913,0,1684,0,1451,0,1214,0,975,0,733,0,490,0,245,0,0,0,-245,0,-490,0,-733,0,-975,0,-1214,0,-1451,0,-1684,0,-1913,0,-2137,0,-2356,0,-2570,0,-2777,0,-2978,0,-3171,0,-3357,0,-3535,0,-3704,0,-3865,0,-4016,0,-4157,0,-4288,0,-4409,0,-4519,0,-4619,0,-4707,0,-4784,0,-4850,0,-4903,0,-4945,0,-4975,0,-4993,0,-5000,0,-4993,0,-4975,0,-4945,0,-4903,0,-4850,0,-4784,0,-4707,0,-4619,0,-4519,0,-4409,0,-4288,0,-4157,0,-4016,0,-3865,0,-3704,0,-3535,0,-3357,0,-3171,0,-2978,0,-2777,0,-2570,0,-2356,0,-2137,0,-1913,0,-1684,0,-1451,0,-1214,0,-975,0,-733,0,-490,0,-245,0,0,0,245,0,490,0,733,0,975,0,1214,0,1451,0,1684,0,1913,0,2137,0,2356,0,2570,0,2777,0,2978,0,3171,0,3357,0,3535,0,3704,0,3865,0,4016,0,4157,0,4288,0,4409,0,4519,0,4619,0,4707,0,4784,0,4850,0,4903,0,4945,0,4975,0,4993,0,5000,0,4993,0,4975,0,4945,0,4903,0,4850,0,4784,0,4707,0,4619,0,4519,0,4409,0,4288,0,4157,0,4016,0,3865,0,3704,0,3535,0,3357,0,3171,0,2978,0,2777,0,2570,0,2356,0,2137,0,1913,0,1684,0,1451,0,1214,0,975,0,733,0,490,0,245,0,0,0,-245,0,-490,0,-733,0,-975,0,-1214,0,-1451,0,-1684,0,-1913,0,-2137,0,-2356,0,-2570,0,-2777,0,-2978,0,-3171,0,-3357,0,-3535,0,-3704,0,-3865,0,-4016,0,-4157,0,-4288,0,-4409,0,-4519,0,-4619,0,-4707,0,-4784,0,-4850,0,-4903,0,-4945,0,-4975,0,-4993,0,-4999,0,-4993,0,-4975,0,-4945,0,-4903,0,-4850,0,-4784,0,-4707,0,-4619,0,-4519,0,-4409,0,-4288,0,-4157,0,-4016,0,-3865,0,-3704,0,-3535,0,-3357,0,-3171,0,-2978,0,-2777,0,-2570,0,-2356,0,-2137,0,-1913,0,-1684,0,-1451,0,-1214,0,-975,0,-733,0,-490,0,-245,0,0,0,245,0,490,0,733,0,975,0,1214,0,1451,0,1684,0,1913,0,2137,0,2356,0,2570,0,2777,0,2978,0,3171,0,3357,0,3535,0,3704,0,3865,0,4016,0,4157,0,4288,0,4409,0,4519,0,4619,0,4707,0,4784,0,4850,0,4903,0,4945,0,4975,0,4993,0,4999,0,4993,0,4975,0,4945,0,4903,0,4850,0,4784,0,4707,0,4619,0,4519,0,4409,0,4288,0,4157,0,4016,0,3865,0,3704,0,3535,0,3357,0,3171,0,2978,0,2777,0,2570,0,2356,0,2137,0,1913,0,1684,0,1451,0,1214,0,975,0,733,0,490,0,245,0,0,0,-245,0,-490,0,-733,0,-975,0,-1214,0,-1451,0,-1684,0,-1913,0,-2137,0,-2356,0,-2570,0,-2777,0,-2978,0,-3171,0,-3357,0,-3535,0,-3704,0,-3865,0,-4016,0,-4157,0,-4288,0,-4409,0,-4519,0,-4619,0,-4707,0,-4784,0,-4850,0,-4903,0,-4945,0,-4975,0,-4993,0,-4999,0,-4993,0,-4975,0,-4945,0,-4903,0,-4850,0,-4784,0,-4707,0,-4619,0,-4519,0,-4409,0,-4288,0,-4157,0,-4016,0,-3865,0,-3704,0,-3535,0,-3357,0,-3171,0,-2978,0,-2777,0,-2570,0,-2356,0,-2137,0,-1913,0,-1684,0,-1451,0,-1214,0,-975,0,-733,0,-490,0,-245,0,0,0,245,0,490,0,733,0,975,0,1214,0,1451,0,1684,0,1913,0,2137,0,2356,0,2570,0,2777,0,2978,0,3171,0,3357,0,3535,0,3704,0,3865,0,4016,0,4157,0,4288,0,4409,0,4519,0,4619,0,4707,0,4784,0,4850,0,4903,0,4945,0,4975,0,4993,0,4999,0,4993,0,4975,0,4945,0,4903,0,4850,0,4784,0,4707,0,4619,0,4519,0,4409,0,4288,0,4157,0,4016,0,3865,0,3704,0,3535,0,3357,0,3171,0,2978,0,2777,0,2570,0,2356,0,2137,0,1913,0,1684,0,1451,0,1214,0,975,0,733,0,490,0,245,0,0,0,-245,0,-490,0,-733,0,-975,0,-1214,0,-1451,0,-1684,0,-1913,0,-2137,0,-2356,0,-2570,0,-2777,0,-2978,0,-3171,0,-3357,0,-3535,0,-3704,0,-3865,0,-4016,0,-4157,0,-4288,0,-4409,0,-4519,0,-4619,0,-4707,0,-4784,0,-4850,0,-4903,0,-4945,0,-4975,0,-4993,0,-4999,0,-4993,0,-4975,0,-4945,0,-4903,0,-4850,0,-4784,0,-4707,0,-4619,0,-4519,0,-4409,0,-4288,0,-4157,0,-4016,0,-3865,0,-3704,0,-3535,0,-3357,0,-3171,0,-2978,0,-2777,0,-2570,0,-2356,0,-2137,0,-1913,0,-1684,0,-1451,0,-1214,0,-975,0,-733,0,-490,0,-245,0};
+
+int16_t amount_of_modulation;
+
+
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_DMA_Init(void);
-static void MX_SAI1_Init(void);
+void PeriphCommonClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+//static void drawLine(int8_t xpos, int8_t ypos )
+//{
+//	BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
+//	BSP_LCD_FillRect(xpos, 240 - height, 25, height);
+////	BSP_LCD_DrawVLine();
+//}
+
+static void Table (void)
+{
+	/* clear LCD */
+	BSP_LCD_Clear(LCD_COLOR_BLACK);
+
+	/* draw and write */
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_DrawLine(30,240,460,240);
+	BSP_LCD_DrawLine(30,30,30,240);
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_DisplayStringAt(10, 10, (uint8_t *)"Spectrum analyzer", CENTER_MODE);
+	BSP_LCD_SetFont(&Font12);
+	BSP_LCD_DisplayStringAt(30, 250, (uint8_t *)"250Hz  500HZ  1kHz  2kHz  3kHz  4kHz  5kHz  6kHz  7kHz  8kHz", LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 30,(uint8_t *)"+4",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 50,(uint8_t *)"+2",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 70,(uint8_t *)"+0",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 90,(uint8_t *)"-2",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 110,(uint8_t *)"-4",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 130,(uint8_t *)"-8",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 150,(uint8_t *)"-12",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 170,(uint8_t *)"-14",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 190,(uint8_t *)"-16",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 210,(uint8_t *)"-20",LEFT_MODE);
+	BSP_LCD_DisplayVertStringAt(5, 230,(uint8_t *)"-40",LEFT_MODE);
+
+//	drawCollumn(30,45);
+//	drawCollumn(73,38);
+//	drawCollumn(116,105);
+	BSP_LCD_DrawVLine(130,120,40);
+//	BSP_LCD_DrawLine(30,30,280,134);
+//	BSP_LCD_DrawLine(280,134,310,84);
+}
+
+void audio_changer (q31_t *buff, int nrelements_to_shift)
+{
+   if(nrelements_to_shift > 0)
+    {
+            for(int i = 0; i< DMABuffLength/2 ; i++)
+        {
+            buff[i] = buff[i + nrelements_to_shift];
+            if(i > (DMABuffLength/2) - nrelements_to_shift -1 ) buff[i] = 0;
+        }
+   }
+   else
+   {
+	   nrelements_to_shift = abs(nrelements_to_shift);
+       for(int i = (DMABuffLength/2) -1; i>=0 ; i--)
+       {
+           buff[i] = buff[i - nrelements_to_shift ];
+           if(i< nrelements_to_shift) buff[i] = 0;
+       }
+   }
+}
+
+uint8_t shiftFact = 7;
+void soundProcess (q31_t *buff, int nrelements)
+{
+
+	arm_rfft_q31(&realFFT_Instance, buff, fft_buff);
+
+	audio_changer (fft_buff, medianValue);
+
+	arm_shift_q31(fft_buff, shiftFact, fft_buff, DMABuffLength / 2);
+
+	arm_cmplx_mag_q31(fft_buff, mag_fft_buff, DMABuffLength / 2);
+
+	arm_rfft_q31(&realIFFT_Instance, fft_buff, buff);
+
+//	arm_shift_q15((q15_t *)buff, shiftFact, (q15_t *)buff, DMABuffLength / 2);
+
+}
+
+/* callbacks */
+
+void HAL_SAI_RxHalfCpltCallback (SAI_HandleTypeDef *hsai_BlockB1)
+{
+	HAL_GPIO_WritePin(Verificare_samplerate_GPIO_Port, Verificare_samplerate_Pin, GPIO_PIN_RESET); //pin PA5
+
+	for(uint16_t i = 0, j = 0; i < DMABuffLength / 2; i++, j++)
+	{
+//		DMABuffin_ch1[j] = wave4p[i++];
+		DMABuffin_ch1[j] = DMABuffin[i++];
+	}
+
+	soundProcess(DMABuffin_ch1, 0);
+
+	for(uint16_t i = 0, j = 0; i < DMABuffLength / 2; i++, j++)
+	{
+		DMABuffout[i++] = (int16_t) DMABuffin_ch1[j];
+		DMABuffout[i] = 0;
+	}
+
+	HAL_GPIO_WritePin(Verificare_samplerate_GPIO_Port, Verificare_samplerate_Pin, GPIO_PIN_SET); //pin PA5
+}
+
+
+void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai_BlockB1)
+{
+	HAL_GPIO_WritePin(Verificare_samplerate_GPIO_Port, Verificare_samplerate_Pin, GPIO_PIN_RESET); //pin PA5
+
+	uint16_t j =0;
+
+	for(uint16_t i = 0; i < DMABuffLength / 2; i++)
+	{
+		if(i % 2 == 0)
+		{
+//			DMABuffin_ch1[j++] = wave4p[DMABuffLength / 2 + i];
+			DMABuffin_ch1[j++] = DMABuffin[DMABuffLength / 2 + i];
+		}
+	}
+
+	soundProcess(&DMABuffin_ch1[0], 0);
+
+	j = 0;
+	for(uint16_t i = 0; i < DMABuffLength / 2; i++)
+	{
+		if(i % 2 == 0)
+		{
+		   DMABuffout[DMABuffLength / 2 + i] = (int16_t) DMABuffin_ch1[j++];
+		}
+		else
+		{
+			DMABuffout[DMABuffLength / 2 + i] = 0;
+		}
+	}
+	HAL_GPIO_WritePin(Verificare_samplerate_GPIO_Port, Verificare_samplerate_Pin, GPIO_PIN_SET); //pin PA5
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	if (hadc == &hadc3)
+	{
+		uint16_t readValue = HAL_ADC_GetValue(&hadc3);
+		amount_of_modulation = (readValue / 32) - 64;
+		medianValue = MEDIANFILTER_Insert(&medianFilter, amount_of_modulation);
+		HAL_ADC_Start_IT(&hadc3);
+	}
+}
+
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint16_t audioBuff[3][256];
-uint16_t audioBuff2[256];
+TS_StateTypeDef  ts;
 
-static int rxBuffIdx = 1;
-static int txBuffIdx = 0;
-
-static int recBuff = 0;
-static int playBuff = 1;
-static int procBuff = 2;
-
-int isTxDone = 0;
-int isRxDone = 0;
+char xTouchStr[10];
+char xTouchStry[10];
 /* USER CODE END 0 */
 
 /**
@@ -86,6 +260,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -94,11 +269,18 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  medianFilter.numNodes = NUM_ELEMENTS;
+  medianFilter.medianBuffer = medianBuffer;
+
+  MEDIANFILTER_Init(&medianFilter);
 
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
+
+/* Configure the peripherals common clocks */
+  PeriphCommonClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
@@ -109,11 +291,36 @@ int main(void)
   MX_I2C1_Init();
   MX_DMA_Init();
   MX_SAI1_Init();
+  MX_ADC3_Init();
+  MX_DMA2D_Init();
+  MX_FMC_Init();
+  MX_I2C3_Init();
+  MX_LTDC_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  BSP_TS_Init(480, 272);
+
+  BSP_LCD_Init();
+  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+  BSP_LCD_DisplayOn();
+
+  BSP_LCD_Init();
+  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+
+  Table();
+
   WM8994_Init(&hi2c1);
-  HAL_SAI_Receive_DMA (&hsai_BlockA1, (uint8_t*) audioBuff[recBuff], sizeof(audioBuff[recBuff]) );
-  HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) audioBuff[recBuff], sizeof(audioBuff[recBuff]) );
+
+  arm_rfft_init_q31(&realFFT_Instance, 256, 0, 1);
+  arm_rfft_init_q31(&realIFFT_Instance, DMABuffLength / 4, 1, 1);
+
+  HAL_SAI_Receive_DMA (&hsai_BlockA1, (uint8_t*) &DMABuffin, DMABuffLength);
+  HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) &DMABuffout, DMABuffLength);
+
+  HAL_ADC_Start_IT(&hadc3);
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,7 +345,7 @@ void SystemClock_Config(void)
 
   /** Macro to configure SAI1BlockB clock source selection
   */
-  __HAL_RCC_SAI_BLOCKBCLKSOURCE_CONFIG(SAI_CLKSOURCE_PLLSAI);
+  __HAL_RCC_SAI_BLOCKBCLKSOURCE_CONFIG(SAI_CLKSOURCE_PLLI2S);
 
   /** Macro to configure SAI1BlockA clock source selection
   */
@@ -189,159 +396,23 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
-  * @param None
+  * @brief Peripherals Common Clock Configuration
   * @retval None
   */
-static void MX_I2C1_Init(void)
+void PeriphCommonClock_Config(void)
 {
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
-  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  /** Initializes the peripherals clock
+  */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI_PLLI2S;
+  PeriphClkInitStruct.PLLI2S.PLLI2SN = 50;
+  PeriphClkInitStruct.PLLI2S.PLLI2SQ = 2;
+  PeriphClkInitStruct.PLLI2SDivQ = 1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
-
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief SAI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SAI1_Init(void)
-{
-
-  /* USER CODE BEGIN SAI1_Init 0 */
-
-  /* USER CODE END SAI1_Init 0 */
-
-  /* USER CODE BEGIN SAI1_Init 1 */
-
-  /* USER CODE END SAI1_Init 1 */
-  hsai_BlockA1.Instance = SAI1_Block_A;
-  hsai_BlockA1.Init.Protocol = SAI_FREE_PROTOCOL;
-  hsai_BlockA1.Init.AudioMode = SAI_MODESLAVE_RX;
-  hsai_BlockA1.Init.DataSize = SAI_DATASIZE_16;
-  hsai_BlockA1.Init.FirstBit = SAI_FIRSTBIT_MSB;
-  hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_RISINGEDGE;
-  hsai_BlockA1.Init.Synchro = SAI_SYNCHRONOUS;
-  hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_ENABLE;
-  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
-  hsai_BlockA1.FrameInit.FrameLength = 32;
-  hsai_BlockA1.FrameInit.ActiveFrameLength = 16;
-  hsai_BlockA1.FrameInit.FSDefinition = SAI_FS_CHANNEL_IDENTIFICATION;
-  hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
-  hsai_BlockA1.FrameInit.FSOffset = SAI_FS_BEFOREFIRSTBIT;
-  hsai_BlockA1.SlotInit.FirstBitOffset = 0;
-  hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
-  hsai_BlockA1.SlotInit.SlotNumber = 2;
-  hsai_BlockA1.SlotInit.SlotActive = 0x0000FFFF;
-  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  hsai_BlockB1.Instance = SAI1_Block_B;
-  hsai_BlockB1.Init.Protocol = SAI_FREE_PROTOCOL;
-  hsai_BlockB1.Init.AudioMode = SAI_MODEMASTER_TX;
-  hsai_BlockB1.Init.DataSize = SAI_DATASIZE_16;
-  hsai_BlockB1.Init.FirstBit = SAI_FIRSTBIT_MSB;
-  hsai_BlockB1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
-  hsai_BlockB1.Init.Synchro = SAI_ASYNCHRONOUS;
-  hsai_BlockB1.Init.OutputDrive = SAI_OUTPUTDRIVE_ENABLE;
-  hsai_BlockB1.Init.NoDivider = SAI_MASTERDIVIDER_ENABLE;
-  hsai_BlockB1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
-  hsai_BlockB1.Init.ClockSource = SAI_CLKSOURCE_PLLSAI;
-  hsai_BlockB1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
-  hsai_BlockB1.FrameInit.FrameLength = 32;
-  hsai_BlockB1.FrameInit.ActiveFrameLength = 16;
-  hsai_BlockB1.FrameInit.FSDefinition = SAI_FS_CHANNEL_IDENTIFICATION;
-  hsai_BlockB1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
-  hsai_BlockB1.FrameInit.FSOffset = SAI_FS_BEFOREFIRSTBIT;
-  hsai_BlockB1.SlotInit.FirstBitOffset = 0;
-  hsai_BlockB1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
-  hsai_BlockB1.SlotInit.SlotNumber = 2;
-  hsai_BlockB1.SlotInit.SlotActive = 0x0000FFFF;
-  if (HAL_SAI_Init(&hsai_BlockB1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SAI1_Init 2 */
-	__HAL_SAI_DISABLE(&hsai_BlockB1);
-	__HAL_SAI_DISABLE(&hsai_BlockA1);
-	__HAL_RCC_SAI1_CLK_ENABLE();
-	__HAL_SAI_ENABLE(&hsai_BlockB1);
-	__HAL_SAI_ENABLE(&hsai_BlockA1);
-
-  /* USER CODE END SAI1_Init 2 */
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
-  /* DMA2_Stream4_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream4_IRQn);
-
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOE_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-
 }
 
 /* USER CODE BEGIN 4 */

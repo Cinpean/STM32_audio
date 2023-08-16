@@ -1,0 +1,6 @@
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:98:9:BSP_TS_Init	16	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:144:9:BSP_TS_DeInit	0	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:154:9:BSP_TS_ITConfig	8	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:172:9:BSP_TS_ITGetStatus	0	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:183:9:BSP_TS_GetState	32	static
+../Drivers/BSP/STM324x9I_EVAL/stm324x9i_eval_ts.c:230:6:BSP_TS_ITClear	8	static

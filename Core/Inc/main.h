@@ -57,6 +57,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Verificare_samplerate_Pin GPIO_PIN_7
+#define Verificare_samplerate_GPIO_Port GPIOG
+#define Volum_Pin GPIO_PIN_10
+#define Volum_GPIO_Port GPIOF
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
