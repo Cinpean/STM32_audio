@@ -1,0 +1,2 @@
+../Core/Src/WM8994.c:107:17:swap16	16	static
+../Core/Src/WM8994.c:112:6:WM8994_Init	40	static
